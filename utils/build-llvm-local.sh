@@ -18,13 +18,13 @@
 #
 ##===----------------------------------------------------------------------===##
 
-LLVM_DIR=${1:-"llvm"}
-BUILD_DIR=${2:-"build"}
-INSTALL_DIR=${3:-"install"}
+LLVM_DIR=${1:-"llvm_debug"}
+BUILD_DIR=${2:-"build_debug"}
+INSTALL_DIR=${3:-"install_debug"}
 
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
-LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:OFF}
+LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:ON}
 
 # Enter a sub-shell to avoid messing up with current directory in case of error
 (
@@ -45,16 +45,20 @@ CMAKE_CONFIGS="\
   -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
   -DLLVM_ENABLE_PROJECTS=mlir \
   -DLLVM_TARGETS_TO_BUILD:STRING=X86;ARM;AArch64 \
-  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=clang \
+  -DCMAKE_CXX_COMPILER=clang++ \
+  -DLLVM_ENABLE_LLD=ON \
+  -DLLVM_USE_LINKER=OFF \
   -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
   -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
   -DCMAKE_C_VISIBILITY_PRESET=hidden \
   -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=1"
 
-if [ -x "$(command -v lld)" ]; then
-  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"
-fi
+# if [ -x "$(command -v lld)" ]; then
+#   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"
+# fi
 
 if [ -x "$(command -v ccache)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"

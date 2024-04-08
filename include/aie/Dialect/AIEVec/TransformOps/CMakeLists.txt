@@ -9,5 +9,6 @@ set(LLVM_TARGET_DEFINITIONS AIEVecTransformOps.td)
 mlir_tablegen(AIEVecTransformOps.h.inc -gen-op-decls)
 mlir_tablegen(AIEVecTransformOps.cpp.inc -gen-op-defs)
 add_public_tablegen_target(MLIRAIEVecTransformOpsIncGen)
+add_dependencies(mlir-headers MLIRAIEVecTransformOpsIncGen)
 
 add_mlir_doc(AIEVecTransformOps AIEVecTransformOps ./ -gen-op-doc)

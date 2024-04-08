@@ -821,7 +821,6 @@ struct AIEObjectFifoStatefulTransformPass
     auto numOperands = clone->getNumOperands();
     for (int operandIndex = 0;
          static_cast<unsigned>(operandIndex) < numOperands; operandIndex++) {
-
       if (int originalDependencyIndex =
               dependencies[originalOpIndex][operandIndex];
           originalDependencyIndex >= 0) {
@@ -850,6 +849,37 @@ struct AIEObjectFifoStatefulTransformPass
     duplicatedOperations.push_back(clone);
   }
 
+  // void replaceOpsNested(OpBuilder &builder, Operation *op, unsigned &opIndex, unsigned numDuplications,
+  //                       std::vector<std::vector<int>> &dependencies, std::vector<Operation *> &duplicatedOperations,
+  //                       Value base, int64_t step, bool inLoop) {
+  //   llvm::outs() << "replaceOpsNested: " << op << "\n";
+  //   if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
+  //     llvm::outs() << "replaceOpsNested LOOP: " << loopOp << "\n";
+  //     Block *body = loopOp.getBody();
+  //     auto withoutTerminator = --body->end();
+  //     // TODO(jornt): is this fully generic?
+  //     if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
+  //       opIndex++;
+  //       llvm::outs() << "Has nested loop: " << nestedLoop << "\n";
+  //       auto clone = nestedLoop->clone();
+  //       replaceOperands(builder, clone, opIndex, base, step, inLoop, numDuplications,
+  //                       dependencies, duplicatedOperations);
+  //       // builder.insert(clone);
+  //       replaceOpsNested(builder, nestedLoop, opIndex, numDuplications, dependencies, duplicatedOperations, base, step, inLoop);
+  //     } else {
+  //       for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
+  //            ++loopBodyOp) {
+  //         opIndex++;
+  //         llvm::outs() << "replaceOperands\n";
+  //         llvm::outs() << "opIndex: " << opIndex << "\n";
+  //         llvm::outs() << "dependencies size: " << dependencies.size() << "\n";
+  //         replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop, numDuplications,
+  //                         dependencies, duplicatedOperations);
+  //       }
+  //     }
+  //   }
+  // }
+
   // Function that duplicates given operations for the given number
   // of times. !!! Assumes builder insertion point is set. !!!
   // If there is a dependency on a loop induction variable, the given
@@ -859,6 +889,30 @@ struct AIEObjectFifoStatefulTransformPass
                       std::vector<std::vector<int>> &dependencies, Value base,
                       int64_t step, bool inLoop) {
     std::vector<Operation *> duplicatedOperations; // operations in current
+    // Recursive function to replace operands, uses recursion to handle nested loop structures.
+    std::function<void(Operation *, unsigned &, unsigned)> replaceOpsNested = 
+      [&](Operation *op, unsigned &opIndex, unsigned numDuplications) -> void {
+      if (auto loopOp = dyn_cast<scf::ForOp>(op)) {
+        Block *body = loopOp.getBody();
+        auto withoutTerminator = --body->end();
+        // NOTE(jornt): This only handles the cases where the nested scf::for is located at the
+        // start of the the body. This should be the most common case, but is not fully generic.
+        if (auto nestedLoop = dyn_cast<scf::ForOp>(body->begin())) {
+          opIndex++;
+          replaceOperands(builder, nestedLoop, opIndex, base, step, inLoop, numDuplications,
+                          dependencies, duplicatedOperations);
+          replaceOpsNested(nestedLoop, opIndex, numDuplications);
+        } else {
+          for (auto loopBodyOp = body->begin(); loopBodyOp != withoutTerminator;
+              ++loopBodyOp) {
+            opIndex++;
+            replaceOperands(builder, &*loopBodyOp, opIndex, base, step, inLoop, numDuplications,
+                            dependencies, duplicatedOperations);
+          }
+        }
+      }
+    };
+    
     // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       duplicatedOperations.clear();
@@ -869,17 +923,7 @@ struct AIEObjectFifoStatefulTransformPass
         replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
                         dependencies, duplicatedOperations);
         builder.insert(clone);
-
-        if (auto nestedLoop = dyn_cast<scf::ForOp>(clone)) {
-          Block *body = nestedLoop.getBody();
-          auto withoutTerminator = --body->end();
-          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
-               ++loopOp) {
-            opIndex++;
-            replaceOperands(builder, &*loopOp, opIndex, base, step, inLoop, i,
-                            dependencies, duplicatedOperations);
-          }
-        }
+        replaceOpsNested(clone, opIndex, i);
       }
     }
   }
@@ -1583,8 +1627,9 @@ struct AIEObjectFifoStatefulTransformPass
     });
     topologicalSort(opsToErase);
     IRRewriter rewriter(&getContext());
-    for (auto it = opsToErase.rbegin(); it != opsToErase.rend(); ++it)
+    for (auto it = opsToErase.rbegin(); it != opsToErase.rend(); ++it) {
       (*it)->erase();
+    }
   }
 };
 

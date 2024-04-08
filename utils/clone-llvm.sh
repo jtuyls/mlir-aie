@@ -44,7 +44,7 @@ if [ x"$1" == x--llvm-worktree ]; then
   )
 else
   # Fetch main first just to clone
-  git clone --depth 1 https://github.com/llvm/llvm-project.git llvm
+  git clone --depth 1 https://github.com/llvm/llvm-project.git llvm_debug
   (
     cd llvm
     # Then fetch the interesting part
