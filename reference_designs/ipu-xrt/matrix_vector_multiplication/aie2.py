@@ -13,14 +13,14 @@ from aie.dialects.scf import *
 
 
 def my_matmul():
-    M = 288
-    K = 288
+    M = 64
+    K = 64
     m = 32
     k = 32
     word_size_in = 2
     word_size_out = 4
 
-    n_cores = 1
+    n_cores = 2
 
     A_sz_in_i32s = M * K * word_size_in // 4
     B_sz_in_i32s = K * word_size_in // 4
@@ -45,6 +45,7 @@ def my_matmul():
         @device(AIEDevice.ipu)
         def device_body():
             memRef_inA_ty = T.memref(m * k, T.bf16())
+            # memRef_inA_ty = T.memref(M * K, T.bf16())
             memRef_inB_ty = T.memref(k, T.bf16())
             memRef_outC_ty = T.memref(m, T.f32())
             memRef_A_ty = T.memref(m, k, T.bf16())
@@ -53,6 +54,7 @@ def my_matmul():
             ofifo_memRef_inB_ty = TypeAttr.get(ObjectFifoType.get(memRef_inB_ty))
             ofifo_memRef_outC_ty = TypeAttr.get(ObjectFifoType.get(memRef_outC_ty))
             ofifo_memRef_A_ty = TypeAttr.get(ObjectFifoType.get(memRef_A_ty))
+            # ofifo_memRef_A_ty = TypeAttr.get(ObjectFifoType.get(memRef_inA_ty))
 
             # AIE Core Function declarations
             zero_scalar = external_func("zero_scalar_f32", inputs=[memRef_outC_ty])
@@ -109,8 +111,10 @@ def my_matmul():
                         (k_in_i32s, 1),
                         (m, k_in_i32s),
                         (1, 1),
+                        # (4, k_in_i32s * m), # (1, 1), # 
                     ],
-                    [],
+                    [
+                    ],
                 )
                 objectfifo_link([memA_fifos[i]], [inA_fifos[i]])
 
@@ -143,12 +147,22 @@ def my_matmul():
                 @core(cores[i], "mv.o")
                 def core_body():
                     for _ in for_(0xFFFFFFFF):
+                        # Fill + peeled matmul
                         elem_out = acquire(
                             ObjectFifoPort.Produce, outC_fifos[i], 1, memRef_outC_ty
                         ).acquired_elem()
+                        elem_in_a = acquire(
+                            ObjectFifoPort.Consume, inA_fifos[i], 1, memRef_A_ty
+                        ).acquired_elem()
+                        elem_in_b = acquire(
+                            ObjectFifoPort.Consume, inB_fifos[0], 1, memRef_inB_ty
+                        ).acquired_elem()
                         Call(zero, [elem_out])
+                        Call(matvec, [elem_in_a, elem_in_b, elem_out])
+                        objectfifo_release(ObjectFifoPort.Consume, inA_fifos[i], 1)
+                        objectfifo_release(ObjectFifoPort.Consume, inB_fifos[0], 1)
 
-                        for _ in for_(K_div_k):
+                        for _ in for_(K_div_k - 1):
                             elem_in_a = acquire(
                                 ObjectFifoPort.Consume, inA_fifos[i], 1, memRef_A_ty
                             ).acquired_elem()

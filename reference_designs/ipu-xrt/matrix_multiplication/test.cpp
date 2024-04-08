@@ -231,8 +231,11 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   auto start = std::chrono::system_clock::now();
-  auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out);
-  run.wait();
+  int I = 1000;
+  for (int i = 0; i < I; i++) {
+    auto run = kernel(bo_instr, instr_v.size(), bo_a, bo_b, bo_out); // instr_v.size()
+    run.wait();
+  }
   auto stop = std::chrono::system_clock::now();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -271,10 +274,10 @@ int main(int argc, const char *argv[]) {
 
   std::cout << std::endl
             << "NPU matmul time: "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(stop -
-                                                                     start)
+            << std::chrono::duration_cast<std::chrono::microseconds>((stop -
+                                                                     start) / I)
                    .count()
-            << "ms." << std::endl;
+            << "us." << std::endl;
 
   if (!errors) {
     std::cout << "\nPASS!\n\n";
